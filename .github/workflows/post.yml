@@ -1,0 +1,40 @@
+# Posts Supa's Instagram calendar on time. GitHub delays or drops scheduled runs under load, so this
+# checks every 10 minutes (public repo: no minute quota); the code, calendar and posting rules live in
+# the private repo, checked out with a deploy key. Posting pace is enforced in tools/mkt/ig.py.
+name: post
+on:
+  schedule:
+    - cron: "3-59/10 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: post
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: furkanecavus-afk/supa
+          ref: supa-2.0
+          ssh-key: ${{ secrets.SUPA_DEPLOY_KEY }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r tools/mkt/requirements.txt
+      - name: Post what's due
+        env:
+          META_SYSTEM_USER_TOKEN: ${{ secrets.META_SYSTEM_USER_TOKEN }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
+          META_IG_USER_ID: "17841411113780211"
+          IG_GRACE_MIN: "0"
+        run: python -m tools.mkt.ig due
+      - name: Save the calendar status
+        run: |
+          git config user.name "supa-scheduler"
+          git config user.email "supa-autopilot@users.noreply.github.com"
+          git add marketing/content-calendar.csv marketing/changelog.md
+          git diff --cached --quiet || (git commit -qm "scheduler: instagram post" && git pull -q --rebase && git push -q)
